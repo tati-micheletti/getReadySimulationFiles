@@ -1,9 +1,3 @@
-## Everything in this file and any files in the R directory are sourced during `simInit()`;
-## all functions and objects are put into the `simList`.
-## To use objects, use `sim$xxx` (they are globally available to all modules).
-## Functions can be used inside any function that was sourced in this module;
-## they are namespaced to the module, just like functions in R packages.
-## If exact location is required, functions will be: `sim$.mods$<moduleName>$FunctionName`.
 defineModule(sim, list(
   name = "getReadySimulationFiles",
   description = paste0("This module helps getting previously simulated files for a given climate",
@@ -18,15 +12,19 @@ defineModule(sim, list(
   timeunit = "year",
   citation = list("citation.bib"),
   documentation = list("NEWS.md", "README.md", "getReadySimulationFiles.Rmd"),
-  reqdPkgs = list("PredictiveEcology/SpaDES.core@sequentialCaching (>= 2.0.3.9002)", "ggplot2"),
+  reqdPkgs = list("PredictiveEcology/SpaDES.core@sequentialCaching (>= 2.0.3.9002)"),
   parameters = bindrows(
     #defineParameter("paramName", "paramClass", value, min, max, "parameter description"),
     defineParameter("gDriveFolder", "character", "1t6032ggUC__jzaJs5H39LW6iFfrqlK_T", NA, NA,
-                    "Folder where to find the zipped simulation results"),
+                    "Google drive folder (as id) where to find the zipped simulation results"),
     defineParameter("climateScenario", "character", c("CanESM5_SPP370"), NA, NA,
                     "Climate Scenario (as ModelName_SPPXXX) to be used"),
     defineParameter("replicateRun", "character", "run01", NA, NA,
                     "Replicate to be used"),
+    defineParameter("usePrepInputs", "logical", FALSE, NA, NA,
+                    paste0("Should reproducible::prepInputs be used for downloading of large",
+                           " existing simulation results? Note that there are known issues ",
+                           "in using googledrive with very large files.")),
     defineParameter(".useCache", "logical", TRUE, NA, NA,
                     "Should caching of events or module be used?")
   ),
@@ -35,8 +33,11 @@ defineModule(sim, list(
   ),
   outputObjects = bindrows(
     createsOutput(objectName = "rstCurrentBurnList", objectClass = "list", 
-                  desc = paste0("List of fires by year (raster format). These ",
-                                "layers are produced by landscape simulations"))
+                  desc = paste0("List of fires by year (SpatRaster format, named list as YearXXXX). These ",
+                                "layers are produced by landscape simulations")),
+    createsOutput(objectName = "rstCurrentBurn", objectClass = "SpatRaster", 
+                  desc = paste0("Raster for time(sim) indicating burned area (in current year).",
+                                "These compose the list rstCurrentBurnList"))
   )
 ))
 
@@ -52,9 +53,22 @@ doEvent.getReadySimulationFiles = function(sim, eventTime, eventType) {
 
       # do stuff for this event
       sim$rstCurrentBurnList <- Cache(getSimulationDataFromGDrive,
-                                      P(sim)[["climateScenario"]],
-                                      P(sim)[["replicateRun"]],
-                                      P(sim)[["gDriveFolder"]])
+                                      climateScenario = P(sim)[["climateScenario"]],
+                                      replicateRun = P(sim)[["replicateRun"]],
+                                      gDriveFolder = P(sim)[["gDriveFolder"]], 
+                                      destinationPath = dataPath(sim), 
+                                      usePrepInputs = P(sim)$usePrepInputs)
+      
+      sim <- scheduleEvent(sim, time(sim), "getReadySimulationFiles", "getRstCurrBurn")
+    },
+    getRstCurrBurn = {
+      ### check for more detailed object dependencies:
+      ### (use `checkObject` or similar)
+      
+      # do stuff for this event
+      sim$rstCurrentBurn <- sim$rstCurrentBurnList[[paste0("Year", time(sim))]]
+      
+      sim <- scheduleEvent(sim, time(sim) + 1, "getReadySimulationFiles", "getRstCurrBurn")
       
     },
     warning(paste("Undefined event type: \'", current(sim)[1, "eventType", with = FALSE],
@@ -63,14 +77,3 @@ doEvent.getReadySimulationFiles = function(sim, eventTime, eventType) {
   return(invisible(sim))
 }
 
-## event functions
-#   - keep event functions short and clean, modularize by calling subroutines from section below.
-
-### template initialization
-Init <- function(sim) {
-  # # ! ----- EDIT BELOW ----- ! #
-
-  # ! ----- STOP EDITING ----- ! #
-
-  return(invisible(sim))
-}
