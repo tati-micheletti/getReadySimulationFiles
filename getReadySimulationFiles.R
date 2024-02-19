@@ -12,24 +12,38 @@ defineModule(sim, list(
   timeunit = "year",
   citation = list("citation.bib"),
   documentation = list("NEWS.md", "README.md", "getReadySimulationFiles.Rmd"),
-  reqdPkgs = list("PredictiveEcology/SpaDES.core@sequentialCaching (>= 2.0.3.9002)"),
+  reqdPkgs = list("PredictiveEcology/SpaDES.core", "PredictiveEcology/reproducible",
+                  "googledrive", "PredictiveEcology/Require"),
   parameters = bindrows(
     #defineParameter("paramName", "paramClass", value, min, max, "parameter description"),
-    defineParameter("gDriveFolder", "character", "1t6032ggUC__jzaJs5H39LW6iFfrqlK_T", NA, NA,
+    defineParameter("gDriveFolder", "character", "1lqIjwQQ8CU6l5GJezC9tVgs0Uz0dv-FD", NA, NA,
                     "Google drive folder (as id) where to find the zipped simulation results"),
-    defineParameter("climateScenario", "character", c("CanESM5_SPP370"), NA, NA,
-                    "Climate Scenario (as ModelName_SPPXXX) to be used"),
+    defineParameter("climateScenario", "character", c("CanESM5_SSP370"), NA, NA,
+                    "Climate Scenario (as ModelName_SSPXXX) to be used"),
     defineParameter("replicateRun", "character", "run01", NA, NA,
                     "Replicate to be used"),
-    defineParameter("usePrepInputs", "logical", FALSE, NA, NA,
-                    paste0("Should reproducible::prepInputs be used for downloading of large",
-                           " existing simulation results? Note that there are known issues ",
-                           "in using googledrive with very large files.")),
+    defineParameter("runInterval", "numeric", 1, NA, NA,
+                    paste0("Should the module be run every decade? This speeds up module testing as ",
+                           "testing if the events need to be run at every time is time-consuming. If ",
+                           "the user knows the disturbances happen every X years, X can be passed here.")),
+    defineParameter(".runName", "character", "run1", NA, NA,
+                    paste0("If you would like your simulations' results to have an appended name ",
+                           "(i.e., replicate number, study area, etc) you can use this parameter")),
+    defineParameter("lastHistoricalFireYearKnown", "numeric", 2017, NA, NA,
+                    paste0("The last historical fire year known that will be passed to the caribou",
+                           " module. After this year, rstCurrentBurn need to be available.")),
+    defineParameter("lastYearSimulations", "numeric", end(sim), NA, NA,
+                    "When is the last year of simulations?"),
     defineParameter(".useCache", "logical", TRUE, NA, NA,
                     "Should caching of events or module be used?")
   ),
   inputObjects = bindrows(
-    expectsInput(objectName = NA, objectClass = NA, desc = NA, sourceURL = NA)
+    expectsInput(objectName = "studyArea", objectClass = "SpatVector",
+                 desc = "Study area for the prediction. Currently only available for NWT",
+                 sourceURL = "https://drive.google.com/open?id=1P4grDYDffVyVXvMjM-RwzpuH1deZuvL3"),
+    expectsInput(objectName = "rasterToMatch", objectClass = "SpatRaster",
+                 desc = "All spatial outputs will be reprojected and resampled to it",
+                 sourceURL = "https://drive.google.com/open?id=1P4grDYDffVyVXvMjM-RwzpuH1deZuvL3")
   ),
   outputObjects = bindrows(
     createsOutput(objectName = "rstCurrentBurnList", objectClass = "list", 
@@ -52,23 +66,39 @@ doEvent.getReadySimulationFiles = function(sim, eventTime, eventType) {
       ### (use `checkObject` or similar)
 
       # do stuff for this event
-      sim$rstCurrentBurnList <- Cache(getSimulationDataFromGDrive,
-                                      climateScenario = P(sim)[["climateScenario"]],
-                                      replicateRun = P(sim)[["replicateRun"]],
-                                      gDriveFolder = P(sim)[["gDriveFolder"]], 
-                                      destinationPath = dataPath(sim), 
-                                      usePrepInputs = P(sim)$usePrepInputs)
-      
-      sim <- scheduleEvent(sim, time(sim), "getReadySimulationFiles", "getRstCurrBurn")
+      allBurnFiles <- getSimulationDataFromGDrive(
+        climateScenario = P(sim)[["climateScenario"]],
+        replicateRun = P(sim)[["replicateRun"]],
+        gDriveFolder = P(sim)[["gDriveFolder"]],
+        destinationPath = Paths[["outputPath"]],
+        startYear = P(sim)$lastHistoricalFireYearKnown+1,
+        endYear = P(sim)$lastYearSimulations)
+
+      sim$rstCurrentBurnList <- rstCurrentBurnListGenerator(pathInputs = Paths[["outputPath"]],
+                                                            studyArea = sim$studyArea, 
+                                                            rasterToMatch = sim$rasterToMatch,
+                                                            runName = P(sim)$.runName)
+
+      sim <- scheduleEvent(sim, time(sim), "getReadySimulationFiles", "getRstCurrBurn", eventPriority = 3)
     },
     getRstCurrBurn = {
       ### check for more detailed object dependencies:
       ### (use `checkObject` or similar)
       
       # do stuff for this event
-      sim$rstCurrentBurn <- sim$rstCurrentBurnList[[paste0("Year", time(sim))]]
+      if (!paste0("Year", time(sim)) %in% names(sim$rstCurrentBurnList)){
+        warning(paste0("Year ", time(sim), " is not available in sim$rstCurrentBurnList.",
+                       ifelse(P(sim)$lastHistoricalFireYearKnown > time(sim), 
+                              paste0(" However, last Historical Fire Year Known is ",P(sim)$lastHistoricalFireYearKnown, 
+                              " so year ", time(sim)," might still become available for future modules. "),
+                              paste0(" Last Historical Fire Year Known is ", P(sim)$lastHistoricalFireYearKnown, 
+                                     " so this year might NOT become available for future modules. Please make sure this is ok."))), 
+                immediate. = TRUE)
+      } else {
+        sim$rstCurrentBurn <- sim$rstCurrentBurnList[[paste0("Year", time(sim))]]
+      }
       
-      sim <- scheduleEvent(sim, time(sim) + 1, "getReadySimulationFiles", "getRstCurrBurn")
+      sim <- scheduleEvent(sim, time(sim) + P(sim)$runInterval, "getReadySimulationFiles", "getRstCurrBurn")
       
     },
     warning(paste("Undefined event type: \'", current(sim)[1, "eventType", with = FALSE],
