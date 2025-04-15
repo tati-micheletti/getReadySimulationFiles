@@ -11,8 +11,8 @@ rstCurrentBurnListGenerator <- function(pathInputs,
     if (length(rstPath) == 0)
       stop("No rstCurrentBurn file (.tif) found in pathInputs. ",
            "Please make sure these files are in the folder. ",
-           "These come generallyfrom landscape simulation, and ",
-           "indicate the pixels burned on a given year (raster)")
+           "These come generally from landscape simulation (or are pre-saved), ",
+           "and indicate the pixels burned on a given year (raster)")
     rstCurrentBurnList <- lapply(rstPath, function(rPath){
       rasName <- paste0("Year", substrBoth(strng = tools::file_path_sans_ext(rPath),
                                            howManyCharacters = 4, fromEnd = TRUE))
@@ -25,7 +25,7 @@ rstCurrentBurnListGenerator <- function(pathInputs,
     })
     rstStck <- rast(rstCurrentBurnList)
     names(rstStck) <- unlist(lapply(rstCurrentBurnList, names))
-    writeRaster(rstStck, filename = listName)
+    terra::writeRaster(rstStck, filename = listName)
   } else {
     rstStck <- rast(listName)
   }
