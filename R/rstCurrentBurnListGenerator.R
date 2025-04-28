@@ -8,6 +8,11 @@ rstCurrentBurnListGenerator <- function(pathInputs,
     rstPath <- grepMulti(x = list.files(path = pathInputs, full.names = TRUE),
                          patterns = c("rstCurrentBurn"),
                          unwanted = c("aux", "xml"))
+    tryCatch({
+      length(rstPath) == 0
+      }, error = function(e){
+        browser()
+      })
     if (length(rstPath) == 0)
       stop("No rstCurrentBurn file (.tif) found in pathInputs. ",
            "Please make sure these files are in the folder. ",
