@@ -12,7 +12,7 @@ defineModule(sim, list(
   timeunit = "year",
   citation = list("citation.bib"),
   documentation = list("NEWS.md", "README.md", "getReadySimulationFiles.Rmd"),
-  reqdPkgs = list("PredictiveEcology/SpaDES.core", "PredictiveEcology/reproducible",
+  reqdPkgs = list("SpaDES.core (>= 2.1.5.9003)", "PredictiveEcology/reproducible",
                   "googledrive", "PredictiveEcology/Require"),
   parameters = bindrows(
     #defineParameter("paramName", "paramClass", value, min, max, "parameter description"),
