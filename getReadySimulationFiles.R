@@ -80,11 +80,11 @@ doEvent.getReadySimulationFiles = function(sim, eventTime, eventType) {
                                                             runName = P(sim)$.runName)
 
       sim <- scheduleEvent(sim, time(sim), "getReadySimulationFiles", "getRstCurrBurn", eventPriority = 3)
+      
     },
     getRstCurrBurn = {
       ### check for more detailed object dependencies:
       ### (use `checkObject` or similar)
-      
       # do stuff for this event
       if (!paste0("Year", time(sim)) %in% names(sim$rstCurrentBurnList)){
         warning(paste0("Year ", time(sim), " is not available in sim$rstCurrentBurnList.",
